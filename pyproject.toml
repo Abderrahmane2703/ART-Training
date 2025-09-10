@@ -1,12 +1,18 @@
 [project]
-name = "summarizer-rl"
+name = "job-offer-gen"
 version = "0.1.0"
-description = "Document Summarizer Agent"
+description = "job offer generator Agent"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "openpipe>=4.50.0",
-    "openpipe-art>=0.3.6",
+    "openpipe-art[skypilot]>=0.4.3",
+    "python-dotenv>=1.0.1",
+    "openai>=1.74.0",
+    "boto3>=1.34.0",
+    "async-lru>=2.0.5",
+    "pydantic>=2.6.0",
+    "wandb>=0.17.0",
 ]
 
 [build-system]
@@ -14,7 +20,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
-sources = ["src/summarizer"]
+sources = ["src/job-offer"]
 dev-mode-dirs = ["src"]
 
 
@@ -22,14 +28,13 @@ dev-mode-dirs = ["src"]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/summarizer"]
+packages = ["src/job-offer"]
 
 [dependency-groups]
 dev = [
     "semver>=3.0.4",
     "python-dotenv>=1.1.0",
     "openai>=1.74.0",
-    "skypilot[aws,cudo,do,fluidstack,gcp,lambda,paperspace,runpod]>=0.8.0",
     "black>=25.1.0",
     "ipykernel>=6.29.5",
     "ipywidgets>=8.1.5",
