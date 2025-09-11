@@ -1,11 +1,8 @@
 import os
-os.environ['SKY_DISABLE_API_SERVER'] = '1'
-os.environ['SKY_API_SERVER_MODE'] = 'disabled'
 
 print("🔄 Starting imports...")
 
 import asyncio
-import os
 import random
 from dotenv import load_dotenv
 print("✓ Basic imports loaded")
@@ -54,8 +51,10 @@ async def main():
         cluster_name=CLUSTER_NAME,
         env_path=".env",
         resources=resources,
+        tail_logs=False,
+        force_restart=True,
     )
-    print("✓ Backend is ready. If this is the first run, the model download on the remote may take a few minutes during registration.")
+    print("✓ Backend is ready.")
 
     #backend = LocalBackend(
     #    # set to True if you want your backend to shut down automatically
