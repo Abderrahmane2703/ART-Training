@@ -114,7 +114,7 @@ async def main():
                                 model,
                                 JobOfferScenario(context=context, step=current_step),
                             )
-                            for _ in range(2)
+                            for _ in range(1)
                         )
                         for context in val_contexts
                     ),
@@ -124,7 +124,7 @@ async def main():
                     (
                         art.TrajectoryGroup(
                             rollout(model, JobOfferScenario(context=context))
-                            for _ in range(10)
+                            for _ in range(4)
                         )
                         for context in train_contexts[batch_start_idx:batch_end_idx]
                     ),

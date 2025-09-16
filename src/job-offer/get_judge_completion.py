@@ -1,18 +1,13 @@
 from async_lru import alru_cache
 import asyncio
 from openai import AsyncAzureOpenAI
-from openai import RateLimitError
 import os
 from dotenv import load_dotenv
-import random
 
 load_dotenv()
 
-# Configurable concurrency and retry/backoff
+# Configurable concurrency
 MAX_CONCURRENCY = int(os.getenv("JUDGE_MAX_CONCURRENCY", "3"))
-BASE_BACKOFF = float(os.getenv("JUDGE_BACKOFF_BASE", "2"))  # seconds
-MAX_BACKOFF = float(os.getenv("JUDGE_BACKOFF_MAX", "30"))    # seconds
-MAX_RETRIES = int(os.getenv("JUDGE_RETRIES", "6"))
 
 semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
 
@@ -28,51 +23,155 @@ client = AsyncAzureOpenAI(
 
 @alru_cache(maxsize=1024)
 async def get_judge_completion(
-    prompt, temperature=0.0, max_tokens=600, retries: int | None = None, timeout=30
+    prompt, temperature=0.0, max_tokens=600, timeout=30
 ) -> str:
-    total_retries = retries if retries is not None else MAX_RETRIES
-    for attempt in range(1, total_retries + 1):
-        try:
-            async with semaphore:
-                completion = await client.chat.completions.create(
-                    messages=[{"role": "user", "content": prompt}],
-                    model=os.getenv("AZURE_DEPLOYMENT_NAME", "gpt-35-turbo"),  # Your Azure deployment name
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    timeout=timeout,
-                )
-            return completion.choices[0].message.content.strip()
-        except Exception as e:
-            # Determine backoff duration
-            retry_after: float | None = None
-            # Try to inspect Retry-After header if present (not always available)
-            try:
-                if hasattr(e, "response") and hasattr(e.response, "headers"):
-                    ra = e.response.headers.get("retry-after") or e.response.headers.get("Retry-After")
-                    if ra is not None:
-                        retry_after = float(ra)
-            except Exception:
-                pass
-
-            # Fallback to exponential backoff with jitter
-            if retry_after is None:
-                retry_after = min(MAX_BACKOFF, BASE_BACKOFF * (2 ** (attempt - 1)))
-                retry_after += random.uniform(0, 0.5)
-
-            if attempt < total_retries:
-                print(
-                    f"[Retry {attempt}/{total_retries}] get_judge_completion failed: {e}. "
-                    f"Retrying in {retry_after:.1f}s..."
-                )
-                await asyncio.sleep(retry_after)
-            else:
-                print(
-                    f"[Failure] get_judge_completion failed after {total_retries} attempts: {e}"
-                )
-                return "ERROR: Get judge completion failed"
+    try:
+        async with semaphore:
+            completion = await client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=os.getenv("AZURE_DEPLOYMENT_NAME_GPT5", "gpt-35-turbo"),  # Your Azure deployment name
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+            )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[Failure] get_judge_completion failed: {e}")
+        return "ERROR: Get judge completion failed"
 
 
 def clear_judge_cache():
     """Clear the cache for get_judge_completion."""
     get_judge_completion.cache_clear()
-    print("Judge cache cleared")
+
+
+# -----------------------------
+# GPT-5 Mini/Nano (Azure) helpers
+# -----------------------------
+
+# Separate client for GPT-5 reasoning models (newer API version)
+client_gpt5_reasoning = AsyncAzureOpenAI(
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
+    # Disable client-level retries so we own the behavior
+    max_retries=0,
+)
+
+
+@alru_cache(maxsize=1024)
+async def get_judge_completion_gpt5_mini(
+    prompt, max_completion_tokens=600, timeout=30
+) -> str:
+    """Judge using Azure GPT-5 Mini deployment.
+    Honors env AZURE_DEPLOYMENT_NAME_GPT5_MINI, falls back to 'gpt-5-mini'.
+    Mirrors logic from get_judge_completion_gpt5_mini.py.
+    """
+    try:
+        async with semaphore:
+            deployment = os.getenv("AZURE_DEPLOYMENT_NAME_GPT5_MINI", "gpt-5-mini")
+            completion = await client_gpt5_reasoning.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a precise evaluator. Provide only the final visible answer. "
+                            "Do not include internal reasoning. Keep outputs concise."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                model=deployment,
+                max_completion_tokens=max_completion_tokens,
+                response_format={"type": "text"},
+                timeout=timeout,
+            )
+        content = completion.choices[0].message.content or ""
+        return content.strip()
+    except Exception as e:
+        print(f"[Failure] get_judge_completion_gpt5_mini failed: {e}")
+        return "ERROR: Get judge completion (gpt5-mini) failed"
+
+
+def clear_judge_cache_gpt5_mini():
+    """Clear the cache for get_judge_completion_gpt5_mini."""
+    get_judge_completion_gpt5_mini.cache_clear()
+
+
+@alru_cache(maxsize=1024)
+async def get_judge_completion_gpt5_nano(
+    prompt, max_completion_tokens=600, timeout=30
+) -> str:
+    """Judge using Azure GPT-5 Nano deployment.
+    Honors env AZURE_DEPLOYMENT_NAME_GPT5_NANO, falls back to 'gpt-5-nano'.
+    Behavior mirrors GPT-5 Mini helper but targets nano.
+    """
+    try:
+        async with semaphore:
+            deployment = os.getenv("AZURE_DEPLOYMENT_NAME_GPT5_NANO", "gpt-5-nano")
+            completion = await client_gpt5_reasoning.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a precise evaluator. Provide only the final visible answer. "
+                            "Do not include internal reasoning. Keep outputs concise."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                model=deployment,
+                max_completion_tokens=max_completion_tokens,
+                response_format={"type": "text"},
+                timeout=timeout,
+            )
+        content = completion.choices[0].message.content or ""
+        return content.strip()
+    except Exception as e:
+        print(f"[Failure] get_judge_completion_gpt5_nano failed: {e}")
+        return "ERROR: Get judge completion (gpt5-nano) failed"
+
+
+def clear_judge_cache_gpt5_nano():
+    """Clear the cache for get_judge_completion_gpt5_nano."""
+    get_judge_completion_gpt5_nano.cache_clear()
+
+
+@alru_cache(maxsize=1024)
+async def get_judge_completion_gpt5_strict(
+    prompt, max_completion_tokens=800, timeout=30
+) -> str:
+    """Judge using Azure GPT-5 deployment with strict JSON output.
+    Uses response_format={"type":"json_object"}.
+    Honors env AZURE_DEPLOYMENT_NAME_GPT5, falls back to 'gpt-5'.
+    """
+    try:
+        async with semaphore:
+            deployment = os.getenv("AZURE_DEPLOYMENT_NAME_GPT5", "gpt-5")
+            completion = await client_gpt5_reasoning.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You MUST return ONLY a strict JSON object. "
+                            "Use double quotes for all keys and strings. "
+                            "Do not include any text before or after the JSON."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                model=deployment,
+                max_completion_tokens=max_completion_tokens,
+                response_format={"type": "json_object"},
+                timeout=timeout,
+            )
+        content = completion.choices[0].message.content or ""
+        return content.strip()
+    except Exception as e:
+        print(f"[Failure] get_judge_completion_gpt5_strict failed: {e}")
+        return "ERROR: Get judge completion (gpt5-strict) failed"
+
+
+def clear_judge_cache_gpt5_strict():
+    """Clear the cache for get_judge_completion_gpt5_strict."""
+    get_judge_completion_gpt5_strict.cache_clear()

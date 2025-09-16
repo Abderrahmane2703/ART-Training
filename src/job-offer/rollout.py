@@ -6,7 +6,12 @@ from pydantic import BaseModel
 import time
 import os
 
-from get_judge_completion import get_judge_completion
+from get_judge_completion import (
+    get_judge_completion,
+    get_judge_completion_gpt5_mini,
+    get_judge_completion_gpt5_nano,
+    get_judge_completion_gpt5_strict,
+)
 from load_documents import JobContext
 
 from openpipe.client import OpenPipe
@@ -138,7 +143,7 @@ Expected language: {scenario.context.language} ({'English' if scenario.context.l
 Respond ONLY in JSON format:
 {{"answer": "YES" or "NO"}}"""
 
-    language_response = await get_judge_completion(language_prompt, max_tokens=50)
+    language_response = await get_judge_completion_gpt5_nano(language_prompt, max_completion_tokens=200)
     try:
         result = json.loads(clean_json_response(language_response))
         scores["language_consistency"] = 1.0 if result["answer"] == "YES" else 0.0
@@ -154,7 +159,7 @@ Text to check:
 Respond ONLY in JSON format:
 {{"valid_xml": true or false, "has_required_tags": true or false}}"""
 
-    xml_response = await get_judge_completion(xml_prompt, max_tokens=100)
+    xml_response = await get_judge_completion_gpt5_mini(xml_prompt, max_completion_tokens=400)
     try:
         result = json.loads(clean_json_response(xml_response))
         scores["xml_format"] = 1.0 if result.get("valid_xml", False) else 0.0
@@ -175,8 +180,9 @@ Instructions:
 2. For each required skill, check if it's present (exact or fuzzy match)
 3. Identify duplicate/redundant skills (e.g., "Python" and "Python Programming", "ML" and "Machine Learning")
 4. Calculate base_score = matched_required_skills / total_required_skills
-5. Calculate deduplication_factor = 1 - (duplicate_count / total_extracted_skills)
-6. Calculate final_score = base_score * deduplication_factor
+5. Calculate total_required_skills_extracted = total_required_skills + duplicate_count.
+6. Calculate deduplication_factor = 1 - (duplicate_count / total_extracted_skills)
+7. Calculate final_score = base_score * deduplication_factor
 
 Example of duplicates to detect:
 - "Python" + "Python" = duplicate
@@ -198,7 +204,7 @@ Respond ONLY in JSON format:
   "final_score": 0.0-1.0
 }}"""
 
-        context_response = await get_judge_completion(context_prompt, max_tokens=400)
+        context_response = await get_judge_completion_gpt5_strict(context_prompt, max_completion_tokens=800)
         try:
             result = json.loads(clean_json_response(context_response))
             scores["context_inclusion"] = result.get("final_score", 0.0)
@@ -213,28 +219,19 @@ Respond ONLY in JSON format:
 
 1. Extract ALL skills mentioned in the job offer (both in Required Skills and Nice-to-Have sections)
 2. EXCLUDE these provided skills from evaluation: {provided_skills_str}
-3. For each NEW skill added by the model, score it:
+3. Ignore the duplicate skills
+4. For each NEW skill added by the model, score it:
    - 1 if relevant to {scenario.context.job_title}
    - 0 if not relevant
-4. Calculate final score = sum(skill_scores) / total_new_skills
+5. Calculate final score = sum(skill_scores) / total_new_skills
 
 Generated job offer:
 {generated_offer}
 
-Respond ONLY in JSON format:
-{{
-  "provided_skills": ["skill1", "skill2"],
-  "all_extracted_skills": ["skill1", "skill2", ...],
-  "new_skills_evaluation": [
-    {{"skill": "skill_name", "relevant": 1}},
-    {{"skill": "skill_name", "relevant": 0}}
-  ],
-  "total_new_skills": number,
-  "relevant_count": number,
-  "final_score": 0.0-1.0
-}}"""
+Respond ONLY as a strict JSON object with a single field:
+{{"final_score": 0.0-1.0}}"""
 
-    skill_relevance_response = await get_judge_completion(skill_relevance_prompt, max_tokens=300)
+    skill_relevance_response = await get_judge_completion_gpt5_mini(skill_relevance_prompt, max_completion_tokens=800)
     try:
         result = json.loads(clean_json_response(skill_relevance_response))
         scores["skill_relevance"] = result.get("final_score", 0.5)
@@ -268,7 +265,7 @@ Respond ONLY in JSON format:
   "final_score": 0.0-1.0
 }}"""
 
-    completeness_response = await get_judge_completion(completeness_prompt, max_tokens=300)
+    completeness_response = await get_judge_completion_gpt5_strict(completeness_prompt, max_completion_tokens=800)
     try:
         result = json.loads(clean_json_response(completeness_response))
         scores["skill_completeness"] = result.get("final_score", 0.5)

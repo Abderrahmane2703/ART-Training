@@ -13,6 +13,7 @@ dependencies = [
     "async-lru>=2.0.5",
     "pydantic>=2.6.0",
     "wandb>=0.17.0",
+    "skypilot>=0.9.3",
 ]
 
 [build-system]

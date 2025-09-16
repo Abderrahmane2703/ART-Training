@@ -1464,6 +1464,7 @@ dependencies = [
     { name = "openpipe-art", extra = ["skypilot"] },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "skypilot" },
     { name = "wandb" },
 ]
 
@@ -1489,6 +1490,7 @@ requires-dist = [
     { name = "openpipe-art", extras = ["skypilot"], specifier = ">=0.4.3" },
     { name = "pydantic", specifier = ">=2.6.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
+    { name = "skypilot", specifier = ">=0.9.3" },
     { name = "wandb", specifier = ">=0.17.0" },
 ]
 
