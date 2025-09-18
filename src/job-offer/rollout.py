@@ -143,7 +143,7 @@ Expected language: {scenario.context.language} ({'English' if scenario.context.l
 Respond ONLY in JSON format:
 {{"answer": "YES" or "NO"}}"""
 
-    language_response = await get_judge_completion_gpt5_nano(language_prompt, max_completion_tokens=200)
+    language_response = await get_judge_completion_gpt5_nano(language_prompt, max_completion_tokens=250)
     try:
         result = json.loads(clean_json_response(language_response))
         scores["language_consistency"] = 1.0 if result["answer"] == "YES" else 0.0

@@ -83,7 +83,7 @@ async def get_judge_completion_gpt5_mini(
                 ],
                 model=deployment,
                 max_completion_tokens=max_completion_tokens,
-                response_format={"type": "text"},
+                response_format={"type": "json_object"},
                 timeout=timeout,
             )
         content = completion.choices[0].message.content or ""
